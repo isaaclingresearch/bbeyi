@@ -1,0 +1,39 @@
+(in-package :bcrawlers)
+
+;; this file will contain all the crawlers for different websites
+;; each website we support will have a custom crawler.
+
+(defparameter test-jiji "https://jiji.ug/central-division/mobile-phones/apple-iphone-7-32-gb-rose-gold-yT1Y5dQQ4vzkJvhgPn2w5aUp.html?page=1&pos=1&cur_pos=1&ads_per_page=20&ads_count=20&lid=r-A_VBer8QUqn46VqH")
+
+
+(defun jiji-crawl (type &key (page 1))
+  "crawl jiji pages"
+  (multiple-value-bind (response response-code response-headers request-uri flexi-response response-bool status-text)
+      (http-request (format nil "https://jiji.ug/api_web/v1/listing?slug=~a&init_page=true&page=~a&webp=true" type page))
+    (flexi-streams:octets-to-string response))
+  )
+
+
+(defparameter *code* "
+package main
+import \"fmt\"
+
+func main() {
+    fmt.Print(\"Hello WebDriver!\")
+}")
+
+(defun test-web ()
+  (with-session ()
+    (setf (url) "http://play.golang.org/?simple=1")
+    (let ((elem (find-element "#code" :by :css-selector)))
+      (element-clear elem)
+      (element-send-keys elem *code*))
+    (let ((btn (find-element "#run")))
+      (element-click btn))
+
+    (loop
+      with div = (find-element "#output")
+      for output = (element-text div)
+      while (equal output "Waiting for remote server...")
+      do (sleep 0.1)
+      finally (print output))))
