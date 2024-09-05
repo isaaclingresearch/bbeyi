@@ -3,7 +3,6 @@
 ;; this file will contain all the crawlers for different websites
 ;; each website we support will have a custom crawler.
 
-(defparameter test-jiji "https://jiji.ug/central-division/mobile-phones/apple-iphone-7-32-gb-rose-gold-yT1Y5dQQ4vzkJvhgPn2w5aUp.html?page=1&pos=1&cur_pos=1&ads_per_page=20&ads_count=20&lid=r-A_VBer8QUqn46VqH")
 
 (defparameter *jiji-types*
   '("cars"
@@ -207,22 +206,145 @@
 
 (defun jiji-crawl (type &key (page 1))
   "crawl jiji pages, the data structure being worked is best seen live on the website but this will do
-{adverts_list: {adverts: [{image_obj: {url: image-url}, price_title: price, region: region, short_description: desc, title: title, url: url, user_phone: user_phone}]}}"
+{adverts_list: {adverts: [{image_obj: {url: image-url}, price_title: price, region: region, short_description: desc, title: title, url: url, user_phone: user_phone}]}}
+
+when the page is not found, return nil
+when the page is found, save all items from the page, then go to the next page, repeat that until all pages are done.
+"
   (multiple-value-bind (response response-code response-headers request-uri flexi-response response-bool status-text)
       (http-request (format nil "https://jiji.ug/api_web/v1/listing?slug=~a&init_page=true&page=~a&webp=true" type page))
+    (declare (ignore response-code response-headers request-uri flexi-response response-bool status-text))
     (let* ((json-data (flexi-streams:octets-to-string response))
 	   (data (parse json-data)))
-      (hash-get data '("adverts_list" "adverts" 0)))))
+      (unless (string= "{\"result\":\"err\",\"message\":\"Not Found\"}" (str:trim json-data))
+	(loop for i across (hash-get data '("adverts_list" "adverts"))
+	      do (save-jiji-item i))
+	(jiji-crawl type :page (1+ page)))
+      )))
 
 (defun save-jiji-item (item)
   "item is a hash table, you need from it an image-url, price_title, region, product url, title"
   (let ((image-url (hash-get item '("image_obj" "url")))
-	(gethash "price_title" item)
-	(gethash "region" item)
-	(gethash "short_description" item)
-	(gethash "title" item)
-	(gethash "url" item)
-	(gethash "region_name" item)
-	(gethash "region_parent_name" item)
-	(gethash "status" active))
-    ))
+	(condition (hash-get item '("attrs" 0 "value")))
+	(price (gethash "price_title" item))
+	(location (gethash "region_item_text" item))
+	(description (gethash "short_description" item))
+	(title (gethash "title" item))
+	(url (gethash "url" item))
+	(status (gethash "status" item))
+	(id (format nil "jiji-~a" (gethash "guid" item))))
+    (bbeyi::save-data id title description price location "jiji" image-url url status condition)))
+
+(defparameter *jumia-types*
+  '("mobile-phones"
+    "tablets"
+    "educational-tablets"
+    "ipads"
+    "tablet-accessories"
+    "tablet-bags"
+    "mobile-accessories"
+    "smartphones"
+    "smartphones"
+    "televisions-recorders"
+    "electronics-camera-photo"
+    "electronics-audio"
+    "home-audio-electronics"
+    "electronic-accessories-supplies"
+    "car-vehicle-electonics"
+    "home-improvement-appliances"
+    "small-appliances"
+    "cooking-appliances"
+    "bedding"
+    "arts-crafts-sewing"
+    "bath"
+    "office-products"
+    "home-kitchen-furniture"
+    "home-kitchen-dining"
+    "home-decor"
+    "home-lighting"
+    "home-kitchen-storage-organization"
+    "power-hand-tools"
+    "home-cleaning-supplies"
+    "tools-home-improvement"
+    "patio-lawn-garden"
+    "womens-fashion"
+    "fashion-sports-shop"
+    "watches-sunglasses"
+    "mens-fashion"
+    "shoe-jewelry-watch-accessories"
+    "fashion-weddings"
+    "kids-fashion"
+    "luggage-travel-gear"
+    "food-cupboard-supplies"
+    "soft-drinks"
+    "grocery-milk-cream"
+    "juice-drinks"
+    "water"
+    "baby-products"
+    "household-supplies"
+    "computer-accessories"
+    "printers"
+    "computer-data-storage"
+    "softwares"
+    "computer-accessories"
+    "womens-make-up"
+    "health-beauty-fragrances"
+    "hair-care-d"
+    "personal-care"
+    "oral-care"
+    "kiddies-accessories"
+    "baby-feeding-products"
+    "baby-toddler-toys"
+    "baby-bathing-skin-care"
+    "baby-health-care"
+    "baby-diapering"
+    "baby-gear-products"
+    "pc-gaming"
+    "xbox-one"
+    "playstation-4"
+    "groceries"
+    "home-office-appliances"
+    "computing"
+    "electronics"
+    "health-beauty"
+    "sporting-goods"
+    "jumia-global"
+    "automobile"
+    "musical-instruments"
+    "toys-games"
+    "pet-supplies"
+    "industrial-scientific"
+    "services"
+    "miscellaneous"
+    "livestock"
+    "wholesale"
+    "electronics"
+    "patio-lawn-garden")
+  "these are the product pages of jumia.ug")
+
+(defun jumia-crawl (type &key (page 1))
+  "just like jiji crawl, but this doesn't provide an api, so the data will just be extracted from the html."
+  (multiple-value-bind (response response-code response-headers request-uri flexi-response response-bool status-text)
+      (http-request (format nil "https://www.jumia.ug/~a/?page=~a#catalog-listing" type page))
+    (declare (ignore response-code response-headers request-uri flexi-response response-bool status-text))
+    (let* ((root (plump:parse response))
+	  (all-articles (plump:get-elements-by-tag-name root "article"))
+	  (articles (remove-if (lambda (article)
+				 (string/= "prd _fb col c-prd" (plump:get-attribute article "class"))) all-articles)))
+      (when articles
+	(dolist (article articles)
+	  (save-jumia-article-data article))
+	(jumia-crawl type :page (1+ page))))))
+
+(defun save-jumia-article-data (item)
+  "remove all the neccessary data from the given item. note that given item is an element object from plump"
+  (let* ((links (plump:children item))
+	 (2nd-child (aref links 1))
+	 (id (plump:get-attribute 2nd-child "data-ga4-item_id"))
+	 (url (plump:get-attribute 2nd-child "href"))
+	 (2nd-child-children (plump:children 2nd-child))
+	 (image-url (plump:get-attribute (aref (plump:children (aref 2nd-child-children 0)) 0) "data-src"))
+	 (details-children (plump:children (aref 2nd-child-children 1)))
+	 (name (plump:text (aref details-children 0)))
+	 (price (plump:text (aref details-children 1))))
+    (bbeyi::save-data (format nil "jumia-~a" id) name nil price nil "jumia" image-url url nil nil)))

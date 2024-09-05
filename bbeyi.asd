@@ -1,7 +1,7 @@
 (defsystem "bbeyi"
   :author "Ninx technology limited"
   :description "a price comparison app for Uganda"
-  :depends-on (:cl-redis :str :com.inuoe.jzon :hunchentoot :hunchensocket :drakma :easy-routes :cl-who :cl-css :cl-base64 :frugal-uuid :trivia :flexi-streams :parenscript :local-time :cl-webdriver-client :cl-hash-util)
+  :depends-on (:cl-redis :str :com.inuoe.jzon :hunchentoot :hunchensocket :drakma :easy-routes :cl-who :cl-css :cl-base64 :frugal-uuid :trivia :flexi-streams :parenscript :local-time :cl-webdriver-client :cl-hash-util :plump)
   :components ((:module "src"
 		:components ((:file "packages")
 			     (:file "bbeyi.kvrocks")
