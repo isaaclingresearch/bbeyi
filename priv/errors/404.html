@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ninxai | 404</title>
+    <link rel="icon" href="/static/icons/web/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/static/icons/web/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/404.css?v=<?= time() ?>">
+    <style>
+        /* 404.css */
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+        }
+
+        .card {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .brand-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .brand-container a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .logo {
+            height: 40px; /* Adjust the height as needed */
+            margin-right: 10px; /* Add space between the logo and the brand name */
+        }
+
+        .card h1 {
+            font-size: 2em;
+           /* color: black#007bff;  Site's blue color */
+        }
+
+        .card h2 {
+            font-size: 1.5em;
+            color: #ff0000; /* Red color for error code */
+        }
+
+        .card p {
+            margin-bottom: 20px;
+            font-size: 1em;
+            color: #333;
+        }
+
+        .link-container {
+            margin-top: 20px;
+        }
+
+        .link-container a {
+            color: #007bff; /* Site's blue color */
+            text-decoration: none;
+            font-size: 1em;
+        }
+
+        .link-container a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 10px;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .card h1 {
+                font-size: 1.5em;
+            }
+
+            .card h2 {
+                font-size: 1.2em;
+            }
+
+            .card p {
+                font-size: 0.875em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="brand-container">
+                <a href="/">
+                    <img src="/static/icons/web/icon-512.png" class="logo" alt="Ninxai Logo">
+                </a>
+                <a href="/"><h1>Ninxai</h1></a>
+            </div>
+            <h2>Error 404</h2>
+            <p>Page not found on this site</p>
+            <div class="link-container">
+                <a href="/" id="home-link">Home</a>
+            </div>
+        </div>
+    </div>
+    <script>
+        const link = document.getElementById('home-link');
+        if (localStorage.getItem('ninxai-cookie')) {
+            link.textContent = 'Home';
+        } else {
+            link.textContent = 'Login/Signup';
+        }
+    </script>
+</body>
+</html>

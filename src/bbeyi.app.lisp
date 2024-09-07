@@ -1,0 +1,299 @@
+(in-package :bbeyi)
+
+;;; HTTP(S) 
+(setq *show-lisp-errors-p* t) ;; set this to show error files in /priv/errors
+
+;; define server config
+;;;; these are set in $HOME/.bashrc to be accessible in the sbcl repl 
+(defvar *bbeyi-http-port* (parse-integer (uiop:getenv "BBEYI_HTTP_PORT")))
+(defvar *bbeyi-https-port* (parse-integer (uiop:getenv "BBEYI_HTTPS_PORT")))
+(defvar *bbeyi-ssl-cert* (uiop:getenv "BBEYI_SSL_CERT"))
+(defvar *bbeyi-ssl-key* (uiop:getenv "BBEYI_SSL_KEY"))
+(defvar *bbeyi-url* (uiop:getenv "BBEYI_HOST"))
+
+;; WEBSOCKET SERVER AND FUNCTIONS
+(defclass ws-endpoint (hunchensocket:websocket-resource)
+  ((name :initarg :name :initform (error "Name this server") :reader :name :accessor name))
+  (:default-initargs :client-class 'ws-user)
+  )
+
+(defclass ws-user (hunchensocket:websocket-client)
+  ((name :initarg :user-agent :reader name :initform (error "Name this user!") :accessor name)))
+
+(defvar *ws-endpoints* (list (make-instance 'ws-endpoint :name "/ws")))
+
+(defun find-ws-endpoint (request)
+  (find (hunchentoot:script-name request) *ws-endpoints* :test #'string= :key #'name))
+
+(pushnew 'find-ws-endpoint hunchensocket:*websocket-dispatch-table*)
+
+
+;; we need to use easy-routes over websockets, so we will create children of both
+(defclass ws-routes-acceptor (easy-routes-acceptor acceptor-websocket)
+  ()
+  (:documentation "a subclass of routes-acceptor and hunchentsocket"))
+
+(defclass ws-routes-ssl-acceptor (easy-routes-ssl-acceptor websocket-ssl-acceptor)
+  ()
+  (:documentation "routes and websockets over ssl"))
+
+
+;; redirect all traffic to https
+(defclass http-to-https-acceptor (hunchentoot:acceptor) ())
+(defmethod hunchentoot:acceptor-dispatch-request ((acceptor http-to-https-acceptor) request)
+  (hunchentoot:redirect (hunchentoot:request-uri request)
+                        :protocol :https :port *bbeyi-https-port*))
+
+(defvar *bbeyi-wss-acceptor* (make-instance 'ws-routes-ssl-acceptor :port *bbeyi-https-port*
+								       :ssl-certificate-file *bbeyi-ssl-cert*
+								       :ssl-privatekey-file *bbeyi-ssl-key*
+								       :document-root (truename "~/common-lisp/bbeyi/priv/")
+								       :error-template-directory (truename "~/common-lisp/bbeyi/priv/errors/")))
+
+(defvar *bbeyi-http-acceptor* (make-instance 'http-to-https-acceptor :port *bbeyi-http-port*))
+
+;; set logging to files
+;(setf (acceptor-message-log-destination *bbeyi-wss-acceptor*) (truename "~/common-lisp/bbeyi/logs/message.log"))
+;(setf (acceptor-access-log-destination *bbeyi-wss-acceptor*) (truename "~/common-lisp/bbeyi/logs/access.log"))
+;; don't allow persistent connections
+;; this is because the server was not responding to requests, with a 503, and the error logs were showing too many threads.
+;; still investigation, but maybe the connections were sending a keep alive header.
+(setf (acceptor-persistent-connections-p *bbeyi-http-acceptor*) nil)
+(setf (acceptor-persistent-connections-p *bbeyi-wss-acceptor*) nil)
+
+;; after reviewing the taskmaster section of the docs, either of two things happened, because i was having one active connections
+;; 1). the connections persisted, I don't why that is, but i have stopped persistent connections.
+;; 2). The taskmaster ran out of threads, or the max accept was exceeded by the active requests.
+;; 3). this is the solution, stop persistent connections above, then increase the threads to 1000, and max accept to 1500.
+
+(let ((http-taskmaster (slot-value *bbeyi-http-acceptor* 'taskmaster))
+      (https-taskmaster (slot-value *bbeyi-wss-acceptor* 'taskmaster)))
+  (setf (slot-value http-taskmaster 'hunchentoot::max-thread-count) 10000)
+  (setf (slot-value http-taskmaster 'hunchentoot::max-accept-count) 15000)
+  (setf (slot-value https-taskmaster 'hunchentoot::max-thread-count) 10000)
+  (setf (slot-value https-taskmaster 'hunchentoot::max-accept-count) 15000))
+
+(defun start-server ()
+  "Start the server"
+  (stop-server)
+  (start-kvrocks)
+  (hunchentoot:start *bbeyi-http-acceptor*)
+  (hunchentoot:start *bbeyi-wss-acceptor*)
+  )
+
+(defun stop-server ()
+  "Stop the server"
+  (when (started-p *bbeyi-http-acceptor*)
+    (stop *bbeyi-http-acceptor*))
+  (when (started-p *bbeyi-wss-acceptor*)
+    (stop *bbeyi-wss-acceptor*))
+  (handler-case (stop-kvrocks)
+    (redis:redis-connection-error (err)
+      (declare (ignore err)))))
+
+(defun restart-server ()
+  (stop-server)
+  (start-server))
+
+;; websocket methods to handle communication via websocket
+(defmethod hunchensocket:client-connected ((endpoint ws-endpoint) ws-user))
+
+(defmethod hunchensocket:text-message-received ((endpoint ws-endpoint) ws-user message-json)
+  (let* ((message (jzon:parse message-json))
+	 (message-type (gethash "type" message nil)))
+    (trivia:match message-type
+      ("auto-complete"
+       (let ((auto-words ( or (gethash "fragment" message) #())))
+	 (hunchensocket:send-text-message ws-user  (jzon:stringify #("asbwn" "tyuewiq" "rutnson"))))))))
+
+
+(defun ws-js-code ()
+  "generate the code for websockets and handling of the back and forth between client and server"
+  (parenscript:ps
+    (setf *socket* (new (-web-socket "/ws")))
+    (setf (chain *socket* onopen) (lambda () ((chain console log) "connected to server")))
+    (setf (chain *socket* onmessage) (lambda (event) (display-suggestions ((chain -j-s-o-n parse) (chain event data)))))
+    (setf (chain *socket* onclose) (lambda () ((chain console log) "socket closed!")))
+    (setf (chain *socket* onerror) (lambda (err) ((chain console log) err)))
+    ;; capture user input
+    (defvar *input* (chain document (get-element-by-id "search-input")))
+    (chain *input* (add-event-listener "input" (lambda ()
+						 (let ((query (chain this value)))
+						   (if (> (chain query length) 0)
+						       (chain *socket* (send (chain -j-s-o-n (stringify (create fragment query
+														type "auto-complete")))))
+						       (clear-suggestions))))))
+    (defun clear-suggestions ()
+      (setf (chain document (get-element-by-id "suggestions") inner-h-t-m-l) ""))
+    (defun display-suggestions (suggestions)
+      (let ((suggestions-container ((chain document get-element-by-id) "suggestions")))
+	(setf (chain suggestions-container inner-h-t-m-l) "")
+	(chain suggestions (for-each (lambda (suggestion)
+				       (let ((suggestion-div (chain document (create-element "div"))))
+					 (setf (getprop suggestion-div 'class-name) "autocomplete-suggestion")
+					 (setf (getprop suggestion-div 'text-content) suggestion)
+					 (chain suggestion-div (add-event-listener "click" (lambda ()
+											     (setf (getprop *input* 'value) suggestion)
+											     (clear-suggestions))))
+					 (chain suggestions-container (append-child suggestion-div))))))))))
+
+;; PAGES
+(defroute index-page ("/" :method :get) ()
+  (with-html-output-to-string (*standard-output*)
+    (:html
+     (:head
+      (:meta :charset "utf-8")
+      (:meta :name "viewport" :content "width=device-width, initial-scale=1")
+      (:title "Product Price Comparison - Bbeyi")
+      ;; CL-CSS styles for a modern look
+(:style "body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; min-height: 100vh; position: relative; }
+         header { background-color: #007BFF; padding: 10px 20px; color: white; display: flex; align-items: center; }
+         header .logo { font-weight: bold; font-size: 24px; }
+         .container { width: 60%; max-width: 1200px; margin: 20px auto; padding: 0 20px; text-align: center; }
+         .search-bar { margin-bottom: 30px; display: flex; flex-direction: column; align-items: center; position: relative; }
+         .search-bar input[type='text'] { width: calc(100% - 40px); padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+         .search-bar button { padding: 10px 20px; border: 1px solid #ccc; border-radius: 0 5px 5px 0; background-color: #007BFF; color: white; cursor: pointer; border-left: none; }
+         .search-bar button:hover { background-color: #0056b3; }
+         .autocomplete-suggestions { border: 1px solid #ccc; max-height: 150px; overflow-y: auto; position: absolute; background-color: white; z-index: 1000; width: calc(100% - 40px); left: 3%; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-top: 5px; top: 100%; }
+         .autocomplete-suggestion { padding: 10px; cursor: pointer; border-bottom: 1px solid #ddd; }
+         .autocomplete-suggestion:hover { background-color: #f0f0f0; }
+         .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
+         .product-card { background-color: white; border-radius: 5px; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); transition: box-shadow 0.3s ease; width: 100%; max-width: 300px; }
+         .product-card:hover { box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); }
+         .product-image { width: 100%; height: auto; }
+         .product-info { padding: 15px; text-align: center; }
+         .product-title { font-size: 18px; margin-bottom: 10px; }
+         .product-price { font-size: 16px; color: #007BFF; margin-bottom: 10px; }
+         .product-site { font-size: 14px; color: #888; }
+         footer { background-color: #007BFF; color: white; text-align: center; padding: 10px 20px; position: relative; width: 100%; box-sizing: border-box; }
+         @media screen and (max-width: 600px) { .search-bar input[type='text'] { width: 80%; } .product-image { width: 60%; margin: 0 auto; } .grid { grid-template-columns: 1fr; } .product-title { font-size: 16px; } .product-price { font-size: 14px; } .product-site { font-size: 12px; } }")
+)
+     (:body
+      (:header
+       (:div :class "logo" "Bbeyi"))
+      (:div :class "container"
+        ;; Search bar
+        (:div :class "search-bar"
+          (:input :type "text" :placeholder "Search products..." :id "search-input")
+	      (:div :id "suggestions" :class "autocomplete-suggestions")
+              (:button "Search"))
+        ;; Product grid
+        (:div :class "grid"
+          ;; Example product 1
+          (:div :class "product-card"
+            (:img :class "product-image" :src "image1.jpg" :alt "Product 1")
+            (:div :class "product-info"
+                  (:h2 :class "product-title" "Product 1")
+                  (:p :class "product-price" "$9.99")
+                  (:p :class "product-site" "Available at Example.com")))
+          ;; Example product 2
+          (:div :class "product-card"
+            (:img :class "product-image" :src "image1.jpg" :alt "Product 2")
+            (:div :class "product-info"
+                  (:h2 :class "product-title" "Product 2")
+                  (:p :class "product-price" "$14.99")
+                  (:p :class "product-site" "Available at Shop.com")))
+          ;; Example product 3
+          (:div :class "product-card"
+            (:img :class "product-image" :src "image1.jpg" :alt "Product 3")
+            (:div :class "product-info"
+                  (:h2 :class "product-title" "Product 3")
+                  (:p :class "product-price" "$7.99")
+                  (:p :class "product-site" "Available at Store.com")))))
+      ;; Footer outside the container
+      (:footer
+       (:p "Â© 2024 Bbeyi. All rights reserved."))
+      ;; JavaScript (not included in this snippet)
+      (:script (str (ws-js-code)))))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(defroute index-page ("/" :method :get) ()
+  (with-html-output-to-string (*standard-output*)
+    (:html
+     (:head
+      (:meta :charset "utf-8")
+      (:meta :name "viewport" :content "width=device-width, initial-scale=1")
+      (:title "Product Price Comparison - Bbeyi")
+      ;; CL-CSS styles for a modern look
+      (:style "body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; min-height: 100vh; position: relative; }
+               header { background-color: #007BFF; padding: 10px 20px; color: white; display: flex; align-items: center; }
+               header .logo { font-weight: bold; font-size: 24px; }
+               .container { width: 60%; max-width: 1200px; margin: 20px auto; padding: 0 20px; text-align: center; }
+               .search-bar { margin-bottom: 30px; display: flex; justify-content: center; align-items: center; }
+               .search-bar input[type='text'] { flex: 1; padding: 10px; border-radius: 5px 0 0 5px; border: 1px solid #ccc; }
+               .search-bar button { padding: 10px 20px; border: 1px solid #ccc; border-radius: 0 5px 5px 0; background-color: #007BFF; color: white; cursor: pointer; border-left: none; }
+               .search-bar button:hover { background-color: #0056b3; }
+               .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
+               .product-card { background-color: white; border-radius: 5px; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); transition: box-shadow 0.3s ease; width: 100%; max-width: 300px; }
+               .product-card:hover { box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); }
+               .product-image { width: 100%; height: auto; }
+               .product-info { padding: 15px; text-align: center; }
+               .product-title { font-size: 18px; margin-bottom: 10px; }
+               .product-price { font-size: 16px; color: #007BFF; margin-bottom: 10px; }
+               .product-site { font-size: 14px; color: #888; }
+               footer { background-color: #007BFF; color: white; text-align: center; padding: 10px 20px; position: relative; width: 100%; box-sizing: border-box; }
+               @media screen and (max-width: 600px) {
+                 .search-bar input[type='text'] { width: 80%; }
+                 .product-image { width: 60%; margin: 0 auto; }
+                 .grid { grid-template-columns: 1fr; }
+                 .product-title { font-size: 16px; }
+                 .product-price { font-size: 14px; }
+                 .product-site { font-size: 12px; }
+               }"))
+     (:body
+      (:header
+       (:div :class "logo" "Bbeyi"))
+      (:div :class "container"
+            ;; Search bar
+            (:div :class "search-bar"
+		  (:input :type "text" :placeholder "Search products..." :id "search-input")
+		  (:div :id "suggestions" :class "autocomplete-suggestions")
+		  (:button "Search"))
+            ;; Product grid
+            (:div :class "grid"
+		  ;; Example product 1
+		  (:div :class "product-card"
+			(:img :class "product-image" :src "image1.jpg" :alt "Product 1")
+			(:div :class "product-info"
+			      (:h2 :class "product-title" "Product 1")
+			      (:p :class "product-price" "$9.99")
+			      (:p :class "product-site" "Available at Example.com")))
+		  ;; Example product 2
+		  (:div :class "product-card"
+			(:img :class "product-image" :src "image1.jpg" :alt "Product 2")
+			(:div :class "product-info"
+			      (:h2 :class "product-title" "Product 2")
+			      (:p :class "product-price" "$14.99")
+			      (:p :class "product-site" "Available at Shop.com")))
+		  ;; Example product 3
+		  (:div :class "product-card"
+			(:img :class "product-image" :src "image1.jpg" :alt "Product 3")
+			(:div :class "product-info"
+			      (:h2 :class "product-title" "Product 3")
+			      (:p :class "product-price" "$7.99")
+			      (:p :class "product-site" "Available at Store.com")))))
+      (:script (str (ws-js-code)))
+      ;; Footer outside the container
+      (:footer
+       (:p "© 2024 Bbeyi. All rights reserved."))))))
+
+
