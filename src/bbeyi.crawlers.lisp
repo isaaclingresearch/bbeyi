@@ -215,7 +215,7 @@ when the page is found, save all items from the page, then go to the next page, 
       (http-request (format nil "https://jiji.ug/api_web/v1/listing?slug=~a&init_page=true&page=~a&webp=true" type page))
     (declare (ignore response-code response-headers request-uri flexi-response response-bool status-text))
     (let* ((json-data (flexi-streams:octets-to-string response))
-	   (data (parse json-data)))
+	   (data (jzon:parse json-data)))
       (unless (string= "{\"result\":\"err\",\"message\":\"Not Found\"}" (str:trim json-data))
 	(loop for i across (hash-get data '("adverts_list" "adverts"))
 	      do (save-jiji-item i))

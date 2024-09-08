@@ -1,3 +1,10 @@
+(defpackage :bbeyi.nlp
+  (:use :cl :str :trivia)
+  (:nicknames :nlp)
+  (:shadow str:match)
+  (:documentation "This package for processing text")
+  (:export :remove-punctuation :remove-json-encapsulation :remove-lisp-encapsulation :make-strict-json :tokenize :count-terms :compute-tf))
+
 (defpackage :bbeyi.crawlers
   (:use :cl :drakma :com.inuoe.jzon :cl-hash-util :plump)
   (:nicknames :bcrawlers)

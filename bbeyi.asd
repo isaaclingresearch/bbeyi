@@ -4,9 +4,10 @@
   :depends-on (:cl-redis :str :com.inuoe.jzon :hunchentoot :hunchensocket :drakma :easy-routes :cl-who :cl-css :cl-base64 :frugal-uuid :trivia :flexi-streams :parenscript :local-time :cl-webdriver-client :cl-hash-util :plump)
   :components ((:module "src"
 		:components ((:file "packages")
+			     (:file "bbeyi.nlp")
 			     (:file "bbeyi.kvrocks")
 			     (:file "bbeyi.crawlers")
-			     (:file "bbeyi")
+			     (:file "bbeyi" :depends-on ("bbeyi.nlp"))
 			     (:file "bbeyi.app")))
 	       )
   :build-operation "program-op" ;; leave as is

@@ -103,8 +103,9 @@
 	 (message-type (gethash "type" message nil)))
     (trivia:match message-type
       ("auto-complete"
-       (let ((auto-words ( or (gethash "fragment" message) #())))
-	 (hunchensocket:send-text-message ws-user  (jzon:stringify #("asbwn" "tyuewiq" "rutnson"))))))))
+       (let* ((fragment (or (gethash "fragment" message) #()))
+	     (auto-words (or (get-autocomplete fragment) #())))
+	 (hunchensocket:send-text-message ws-user  (jzon:stringify auto-words)))))))
 
 
 (defun ws-js-code ()
@@ -137,6 +138,38 @@
 											     (clear-suggestions))))
 					 (chain suggestions-container (append-child suggestion-div))))))))))
 
+(defun index-css ()
+(cl-css:css
+ '((body :font-family "Arial, sans-serif" :margin "0" :padding "0" :background-color "#f4f4f4" :color "#333" :min-height "100vh" :position "relative")
+   (header :background-color "#007BFF" :padding "10px 20px" :color "white" :display "flex" :align-items "center")
+   ("header .logo" :font-weight "bold" :font-size "24px")
+   (".container" :width "60%" :max-width "1200px" :margin "20px auto" :padding "0 20px" :text-align "center")
+   (".search-bar" :margin-bottom "30px" :display "flex" :flex-direction "column" :position "relative")
+   (".search-bar input[type='text']" :width "calc(100% - 40px)" :padding "10px" :font-size "16px" :border "1px solid #ccc" :border-radius "4px" :box-shadow "0 2px 5px rgba(0,0,0,0.1)")
+   (".search-bar button" :padding "10px 20px" :border "1px solid #ccc" :border-radius "0 5px 5px 0" :background-color "#007BFF" :color "white" :cursor "pointer" :border-left "none")
+   (".search-bar button:hover" :background-color "#0056b3")
+   (".search-and-button" :width "100%" :display "flex" :flex-direction "row")
+   (".autocomplete-suggestions" :border "1px solid #ccc" :max-height "150px" :overflow-y "auto" :position "absolute" :background-color "white" :z-index "1000" :width "calc(100% - 40px)" :left "3%" :box-shadow "0 2px 5px rgba(0,0,0,0.1)" :margin-top "5px" :top "100%")
+   (".autocomplete-suggestion" :padding "10px" :cursor "pointer" :border-bottom "1px solid #ddd")
+   (".autocomplete-suggestion:hover" :background-color "#f0f0f0")
+   (".grid" :display "flex" :flex-wrap "wrap" :justify-content "center" :gap "20px")
+   (".product-card" :background-color "white" :border-radius "5px" :overflow "hidden" :box-shadow "0 4px 8px rgba(0, 0, 0, 0.1)" :transition "box-shadow 0.3s ease" :width "100%" :max-width "300px")
+   (".product-card:hover" :box-shadow "0 8px 16px rgba(0, 0, 0, 0.2)")
+   (".product-image" :width "100%" :height "auto")
+   (".product-info" :padding "15px" :text-align "center")
+   (".product-title" :font-size "18px" :margin-bottom "10px")
+   (".product-price" :font-size "16px" :color "#007BFF" :margin-bottom "10px")
+   (".product-site" :font-size "14px" :color "#888")
+   (footer :background-color "#007BFF" :color "white" :text-align "center" :padding "10px 20px" :position "relative" :width "100%" :box-sizing "border-box")
+   ("@media screen and (max-width: 600px)"
+    (".container" :width "94%")
+    (".search-bar input[type='text']" :width "100%")
+    (".product-image" :width "60%" :margin "0 auto")
+    (".grid" :grid-template-columns "1fr")
+    (".product-title" :font-size "16px")
+    (".product-price" :font-size "14px")
+    (".product-site" :font-size "12px")))))
+
 ;; PAGES
 (defroute index-page ("/" :method :get) ()
   (with-html-output-to-string (*standard-output*)
@@ -144,30 +177,8 @@
      (:head
       (:meta :charset "utf-8")
       (:meta :name "viewport" :content "width=device-width, initial-scale=1")
-      (:title "Product Price Comparison - Bbeyi")
-      ;; CL-CSS styles for a modern look
-      (:style "body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; min-height: 100vh; position: relative; }
-         header { background-color: #007BFF; padding: 10px 20px; color: white; display: flex; align-items: center; }
-         header .logo { font-weight: bold; font-size: 24px; }
-         .container { width: 60%; max-width: 1200px; margin: 20px auto; padding: 0 20px; text-align: center; }
-         .search-bar { margin-bottom: 30px; display: flex; flex-direction: column; align-items: center; position: relative; }
-         .search-bar input[type='text'] { width: calc(100% - 40px); padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-         .search-bar button { padding: 10px 20px; border: 1px solid #ccc; border-radius: 0 5px 5px 0; background-color: #007BFF; color: white; cursor: pointer; border-left: none; }
-         .search-bar button:hover { background-color: #0056b3; }
-         .search-and-button {display: flex; flex-direction: row;}
-         .autocomplete-suggestions { border: 1px solid #ccc; max-height: 150px; overflow-y: auto; position: absolute; background-color: white; z-index: 1000; width: calc(100% - 40px); left: 3%; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-top: 5px; top: 100%; }
-         .autocomplete-suggestion { padding: 10px; cursor: pointer; border-bottom: 1px solid #ddd; }
-         .autocomplete-suggestion:hover { background-color: #f0f0f0; }
-         .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
-         .product-card { background-color: white; border-radius: 5px; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); transition: box-shadow 0.3s ease; width: 100%; max-width: 300px; }
-         .product-card:hover { box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); }
-         .product-image { width: 100%; height: auto; }
-         .product-info { padding: 15px; text-align: center; }
-         .product-title { font-size: 18px; margin-bottom: 10px; }
-         .product-price { font-size: 16px; color: #007BFF; margin-bottom: 10px; }
-         .product-site { font-size: 14px; color: #888; }
-         footer { background-color: #007BFF; color: white; text-align: center; padding: 10px 20px; position: relative; width: 100%; box-sizing: border-box; }
-         @media screen and (max-width: 600px) { .search-bar input[type='text'] { width: 80%; } .product-image { width: 60%; margin: 0 auto; } .grid { grid-template-columns: 1fr; } .product-title { font-size: 16px; } .product-price { font-size: 14px; } .product-site { font-size: 12px; } }"))
+      (:title "Bbeyi")
+      (:style (str (index-css))))
      (:body
       (:header
        (:div :class "logo" "Bbeyi"))
@@ -182,28 +193,36 @@
             ;; Product grid
             (:div :class "grid"
 		  ;; Example product 1
-		  (:div :class "product-card"
-			(:img :class "product-image" :src "image1.jpg" :alt "Product 1")
-			(:div :class "product-info"
-			      (:h2 :class "product-title" "Product 1")
-			      (:p :class "product-price" "$9.99")
-			      (:p :class "product-site" "Available at Example.com")))
-		  ;; Example product 2
-		  (:div :class "product-card"
-			(:img :class "product-image" :src "image1.jpg" :alt "Product 2")
-			(:div :class "product-info"
-			      (:h2 :class "product-title" "Product 2")
-			      (:p :class "product-price" "$14.99")
-			      (:p :class "product-site" "Available at Shop.com")))
-		  ;; Example product 3
-		  (:div :class "product-card"
-			(:img :class "product-image" :src "image1.jpg" :alt "Product 3")
-			(:div :class "product-info"
-			      (:h2 :class "product-title" "Product 3")
-			      (:p :class "product-price" "$7.99")
-			      (:p :class "product-site" "Available at Store.com")))))
+		  (let ((products (test-data)))
+		    (dolist (product products)
+		      (htm 
+			   (:div :class "product-card"
+				 (:img :class "product-image" :src (first product) :alt (str (second product)))
+				 (:div :class "product-info"
+				       (:h2 :class "product-title" (str (third product)))
+				       (:p :class "product-price" (str (fourth product)))
+				       (:p :class "product-site" (str (str:capitalize (fifth product)))))))))))
       ;; Footer outside the container
       (:footer
-       (:p "Â© 2024 Bbeyi. All rights reserved."))
+       (:p "© 2024 Bbeyi. All rights reserved."))
       ;; JavaScript (not included in this snippet)
       (:script (str (ws-js-code)))))))
+
+(defun test-data ()
+  "generates data for testing our application web pages"
+  (let* ((keys (subseq (redis:red-keys "{product}:*") 0 5))
+	 (data (mapcar #'redis:red-hgetall keys)))
+   (mapcar (lambda (d)
+	     (list (get-value-by-key "image-url" d)
+		   (get-value-by-key "name" d)
+		   (get-value-by-key "name" d)
+		   (get-value-by-key "price" d)
+		   (get-value-by-key "site" d)
+		   (get-value-by-key "url" d)))
+	   data)))
+
+(defun get-value-by-key (key lst)
+  (let ((pos (position key lst :test #'equal)))
+    (if pos
+        (nth (1+ pos) lst)
+        nil)))
