@@ -348,3 +348,10 @@ when the page is found, save all items from the page, then go to the next page, 
 	 (name (plump:text (aref details-children 0)))
 	 (price (plump:text (aref details-children 1))))
     (bbeyi::save-data (format nil "jumia-~a" id) name nil price nil "jumia" image-url url nil nil)))
+
+(defun spider ()
+  "get all products"
+  (dolist (jiji *jiji-types*)
+    (jiji-crawl jiji))
+  (dolist (jumia *jumia-types*)
+    (jumia-crawl jumia)))

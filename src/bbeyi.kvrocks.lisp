@@ -99,11 +99,20 @@ forexample: tokens is saved in tok, toke, token, tokens fragments"
 			   (redis:red-zrange (format nil "{index}{autocomplete}:~a" (string-downcase token)) 0 -1 :withscores)))
 			tokens)))
     (unless (equal '(nil) names)
-      (mapcar #'car (subseq (combine-alists names) 0 10)))))
+      (let ((combined-alist (combine-alists names)))
+	(if (<= (length combined-alist) 10)
+	    (mapcar #'car combined-alist)
+	    (mapcar #'car (subseq combined-alist 0 10)))))))
 
-(defun get-search (fragment)
+(defun get-search (txt)
   "given a fragment, get all product ids of it"
-  (to-alist (redis:red-zrange (format nil "{index}{search}:~a" (string-downcase fragment)) 0 -1 :withscores)))
+  (let* ((tokens (nlp:tokenize txt))
+	 (names (mapcar (lambda (token)
+			  (to-alist
+			   (redis:red-zrange (format nil "{index}{search}:~a" (string-downcase token)) 0 -1 :withscores)))
+			tokens)))
+    (unless (equal '(nil) names)
+      (mapcar #'car (combine-alists names)))))
 
 (defun to-alist (lst)
   "Convert a list of elements into an alist assuming alternating key-value pairs."

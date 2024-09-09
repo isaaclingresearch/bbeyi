@@ -104,7 +104,8 @@
     (trivia:match message-type
       ("auto-complete"
        (let* ((fragment (or (gethash "fragment" message) #()))
-	     (auto-words (or (get-autocomplete fragment) #())))
+	      (auto-words (or (mapcar (lambda (str)
+					(str:downcase (nlp:remove-punctuation str))) (get-autocomplete fragment)) #())))
 	 (hunchensocket:send-text-message ws-user  (jzon:stringify auto-words)))))))
 
 
@@ -138,38 +139,6 @@
 											     (clear-suggestions))))
 					 (chain suggestions-container (append-child suggestion-div))))))))))
 
-(defun index-css ()
-(cl-css:css
- '((body :font-family "Arial, sans-serif" :margin "0" :padding "0" :background-color "#f4f4f4" :color "#333" :min-height "100vh" :position "relative")
-   (header :background-color "#007BFF" :padding "10px 20px" :color "white" :display "flex" :align-items "center")
-   ("header .logo" :font-weight "bold" :font-size "24px")
-   (".container" :width "60%" :max-width "1200px" :margin "20px auto" :padding "0 20px" :text-align "center")
-   (".search-bar" :margin-bottom "30px" :display "flex" :flex-direction "column" :position "relative")
-   (".search-bar input[type='text']" :width "calc(100% - 40px)" :padding "10px" :font-size "16px" :border "1px solid #ccc" :border-radius "4px" :box-shadow "0 2px 5px rgba(0,0,0,0.1)")
-   (".search-bar button" :padding "10px 20px" :border "1px solid #ccc" :border-radius "0 5px 5px 0" :background-color "#007BFF" :color "white" :cursor "pointer" :border-left "none")
-   (".search-bar button:hover" :background-color "#0056b3")
-   (".search-and-button" :width "100%" :display "flex" :flex-direction "row")
-   (".autocomplete-suggestions" :border "1px solid #ccc" :max-height "150px" :overflow-y "auto" :position "absolute" :background-color "white" :z-index "1000" :width "calc(100% - 40px)" :left "3%" :box-shadow "0 2px 5px rgba(0,0,0,0.1)" :margin-top "5px" :top "100%")
-   (".autocomplete-suggestion" :padding "10px" :cursor "pointer" :border-bottom "1px solid #ddd")
-   (".autocomplete-suggestion:hover" :background-color "#f0f0f0")
-   (".grid" :display "flex" :flex-wrap "wrap" :justify-content "center" :gap "20px")
-   (".product-card" :background-color "white" :border-radius "5px" :overflow "hidden" :box-shadow "0 4px 8px rgba(0, 0, 0, 0.1)" :transition "box-shadow 0.3s ease" :width "100%" :max-width "300px")
-   (".product-card:hover" :box-shadow "0 8px 16px rgba(0, 0, 0, 0.2)")
-   (".product-image" :width "100%" :height "auto")
-   (".product-info" :padding "15px" :text-align "center")
-   (".product-title" :font-size "18px" :margin-bottom "10px")
-   (".product-price" :font-size "16px" :color "#007BFF" :margin-bottom "10px")
-   (".product-site" :font-size "14px" :color "#888")
-   (footer :background-color "#007BFF" :color "white" :text-align "center" :padding "10px 20px" :position "relative" :width "100%" :box-sizing "border-box")
-   ("@media screen and (max-width: 600px)"
-    (".container" :width "94%")
-    (".search-bar input[type='text']" :width "100%")
-    (".product-image" :width "60%" :margin "0 auto")
-    (".grid" :grid-template-columns "1fr")
-    (".product-title" :font-size "16px")
-    (".product-price" :font-size "14px")
-    (".product-site" :font-size "12px")))))
-
 ;; PAGES
 (defroute index-page ("/" :method :get) ()
   (with-html-output-to-string (*standard-output*)
@@ -181,13 +150,13 @@
       (:style (str (index-css))))
      (:body
       (:header
-       (:div :class "logo" "Bbeyi"))
+       (:div :class "logo" (:a :href "/" "Bbeyi")))
       (:div :class "container"
             ;; Search bar
             (:div :class "search-bar"
-		  (:form :class "/query" :method "get"
+		  (:form :action "/search" :method "get"
 			 (:div :class "search-and-button"
-			       (:input :type "text" :placeholder "Search products..." :id "search-input")
+			       (:input :name "q" :type "text" :placeholder "Search products..." :id "search-input")
 			       (:button "Search"))
 	  		 (:div :id "suggestions" :class "autocomplete-suggestions")))
             ;; Product grid
@@ -203,8 +172,16 @@
 				       (:p :class "product-price" (str (fourth product)))
 				       (:p :class "product-site" (str (str:capitalize (fifth product)))))))))))
       ;; Footer outside the container
-      (:footer
-       (:p "© 2024 Bbeyi. All rights reserved."))
+        (:footer
+         ;; Links section
+         (:div :class "footer-links"
+          (:a :href "mailto:bbeyi@ninx.xyz" "Email Us") " | "
+          (:a :href "tel:+256785842699" "Call Us") " | "
+          (:a :href "/privacy" "Privacy"))
+         ;; Separator line
+         (:hr :class "footer-separator")
+         ;; Copyright line
+         (:p "© 2024 Bbeyi. All rights reserved."))
       ;; JavaScript (not included in this snippet)
       (:script (str (ws-js-code)))))))
 
@@ -212,17 +189,149 @@
   "generates data for testing our application web pages"
   (let* ((keys (subseq (redis:red-keys "{product}:*") 0 5))
 	 (data (mapcar #'redis:red-hgetall keys)))
-   (mapcar (lambda (d)
-	     (list (get-value-by-key "image-url" d)
-		   (get-value-by-key "name" d)
-		   (get-value-by-key "name" d)
-		   (get-value-by-key "price" d)
-		   (get-value-by-key "site" d)
-		   (get-value-by-key "url" d)))
-	   data)))
+    (mapcar (lambda (d)
+	      (list (get-value-by-key "image-url" d)
+		    (get-value-by-key "name" d)
+		    (get-value-by-key "name" d)
+		    (get-value-by-key "price" d)
+		    (get-value-by-key "site" d)
+		    (get-value-by-key "url" d)))
+	    data)))
+
+(defun search-data (query)
+  "builds search data for a given query"
+  (let* ((keys (get-search query))
+	 (data (mapcar #'redis:red-hgetall keys)))
+    (mapcar (lambda (d)
+	      (list (get-value-by-key "image-url" d)
+		    (get-value-by-key "name" d)
+		    (get-value-by-key "name" d)
+		    (get-value-by-key "price" d)
+		    (get-value-by-key "site" d)
+		    (get-value-by-key "url" d)))
+	    data)))
 
 (defun get-value-by-key (key lst)
   (let ((pos (position key lst :test #'equal)))
     (if pos
         (nth (1+ pos) lst)
         nil)))
+
+(defun index-css ()
+  (cl-css:css
+   '((body :font-family "Arial, sans-serif" :margin "0" :padding "0" :background-color "#f4f4f4" :color "#333" :min-height "100vh" :position "relative")
+     (header :background-color "#007BFF" :padding "10px 20px" :color "white" :display "flex" :align-items "center")
+     ("header .logo" :font-weight "bold" :font-size "24px")
+     (".logo a" :color "white" :text-decoration "none")
+     (".logo a:hover" :color "#00ffcc") ;; Hover color
+     (".container" :width "60%" :max-width "1200px" :margin "20px auto" :padding "0 20px" :text-align "center")
+     (".search-bar" :margin-bottom "30px" :display "flex" :flex-direction "column" :position "relative")
+     (".search-bar input[type='text']" :width "calc(100% - 40px)" :padding "10px" :font-size "16px" :border "1px solid #ccc" :border-radius "4px" :box-shadow "0 2px 5px rgba(0,0,0,0.1)")
+     (".search-bar button" :padding "10px 20px" :border "1px solid #ccc" :border-radius "0 5px 5px 0" :background-color "#007BFF" :color "white" :cursor "pointer" :border-left "none")
+     (".search-bar button:hover" :background-color "#0056b3")
+     (".search-and-button" :width "100%" :display "flex" :flex-direction "row")
+     (".autocomplete-suggestions" :border "1px solid #ccc" :max-height "150px" :overflow-y "auto" :position "absolute" :background-color "white" :z-index "1000" :width "calc(100% - 40px)" :left "3%" :box-shadow "0 2px 5px rgba(0,0,0,0.1)" :margin-top "5px" :top "100%")
+     (".autocomplete-suggestion" :padding "10px" :cursor "pointer" :border-bottom "1px solid #ddd")
+     (".autocomplete-suggestion:hover" :background-color "#f0f0f0")
+     (".grid" :display "flex" :flex-wrap "wrap" :justify-content "center" :gap "20px")
+     (".product-card" :background-color "white" :border-radius "5px" :overflow "hidden" :box-shadow "0 4px 8px rgba(0, 0, 0, 0.1)" :transition "box-shadow 0.3s ease" :width "100%" :max-width "300px")
+     (".product-card:hover" :box-shadow "0 8px 16px rgba(0, 0, 0, 0.2)")
+     (".product-image" :width "100%" :height "auto")
+     (".product-info" :padding "15px" :text-align "center")
+     (".product-title" :font-size "18px" :margin-bottom "10px")
+     (".product-price" :font-size "16px" :color "#007BFF" :margin-bottom "10px")
+     (".product-site" :font-size "14px" :color "#888")
+     (footer :background-color "#007BFF" :color "white" :text-align "center" :padding "10px 20px" :position "relative" :width "100%" :box-sizing "border-box")
+     ;; Footer links style
+     (".footer-links" :text-align "center" :color "white" :margin-bottom "10px")
+     ;; Footer links hover effect
+     (".footer-links a" :color "white" :text-decoration "none")
+     (".footer-links a:hover" :color "#00ffcc") ;; Hover color
+     ;; Separator line style
+     (".footer-separator" :border "0" :border-top "1px solid white" :margin "10px 0")
+     ;; Pagination styles
+     (".pagination" :display "flex" :justify-content "center" :align-items "center" :margin "20px 0")
+     (".pagination a" :padding "10px 15px" :margin "0 5px" :border "1px solid #007BFF" :background-color "#007BFF" :color "white" :text-decoration "none" :border-radius "5px")
+     (".pagination a:hover" :background-color "#0056b3")
+     (".pagination .current-page" :padding "10px 15px" :margin "0 5px" :border "1px solid #333" :background-color "#333" :color "white" :border-radius "5px")
+     ("@media screen and (max-width: 600px)"
+      (".container" :width "94%")
+      (".search-bar input[type='text']" :width "100%")
+      (".product-image" :width "60%" :margin "0 auto")
+      (".grid" :grid-template-columns "1fr")
+      (".product-title" :font-size "16px")
+      (".product-price" :font-size "14px")
+      (".product-site" :font-size "12px")))))
+
+
+(defun prepare-url (url)
+  "remove punctuation, make lowercase, replace space with + for readability"
+  (str:replace-all " " "+" (nlp:remove-punctuation (str:downcase url))))
+
+
+(defroute search-page ("/search" :method :get) (q page)
+  (let* ((products (search-data q))
+         (total-products (length products))
+         (products-per-page 20)
+         (total-pages (ceiling (/ total-products products-per-page)))
+         (current-page (parse-integer (or page "1")))
+         (start-index (* (1- current-page) products-per-page))
+         (end-index (min total-products (* current-page products-per-page)))
+         (paged-products (subseq products start-index end-index))
+         (start-page (max 1 (- current-page 4)))
+         (end-page (min total-pages (+ current-page 4))))
+    (with-html-output-to-string (*standard-output*)
+      (:html
+       (:head
+        (:meta :charset "utf-8")
+        (:meta :name "viewport" :content "width=device-width, initial-scale=1")
+        (:title (str (format nil "~a | Bbeyi" q)))
+        (:style (str (index-css))))
+       (:body
+        (:header
+         (:div :class "logo" (:a :href "/" "Bbeyi")))
+        (:div :class "container"
+              ;; Search bar
+              (:div :class "search-bar"
+                    (:form :action "/search" :method "get"
+                           (:div :class "search-and-button"
+                                 (:input :name "q" :type "text" :placeholder "Search products..." :id "search-input" :value (str q))
+                                 (:button "Search"))
+                           (:div :id "suggestions" :class "autocomplete-suggestions")))
+              ;; Product grid
+              (:div :class "grid"
+                    (dolist (product paged-products)
+                      (htm 
+                       (:div :class "product-card"
+                             (:img :class "product-image" :src (first product) :alt (str (second product)))
+                             (:div :class "product-info"
+                                   (:h2 :class "product-title" (str (third product)))
+                                   (:p :class "product-price" (str (fourth product)))
+                                   (:p :class "product-site" (str (str:capitalize (fifth product))))))))
+                    ;; Pagination
+                    (:div :class "pagination"
+                          ;; Back button
+                          (when (> current-page 1)
+                            (htm (:a :href (format nil "/search?q=~a&page=~a" (prepare-url q) (- current-page 1)) "Back")))
+                          ;; Page numbers
+                          (loop for i from start-page to end-page do
+                            (if (= i current-page)
+                                (htm (:span :class "current-page" (str i)))
+                                (htm (:a :href (format nil "/search?q=~a&page=~a" (prepare-url q) i) (str i)))))
+                          ;; Next button
+                          (when (< current-page total-pages)
+                            (htm (:a :href (format nil "/search?q=~a&page=~a" (prepare-url q) (+ current-page 1)) "Next"))))))
+        ;; Footer outside the container
+        (:footer
+         ;; Links section
+         (:div :class "footer-links"
+          (:a :href "mailto:bbeyi@ninx.xyz" "Email Us") " | "
+          (:a :href "tel:+256785842699" "Call Us") " | "
+          (:a :href "/privacy" "Privacy"))
+         ;; Separator line
+         (:hr :class "footer-separator")
+         ;; Copyright line
+         (:p "© 2024 Bbeyi. All rights reserved."))
+        ;; JavaScript (not included in this snippet)
+        (:script (str (ws-js-code))))))))
+
