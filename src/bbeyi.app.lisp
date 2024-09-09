@@ -139,15 +139,27 @@
 											     (clear-suggestions))))
 					 (chain suggestions-container (append-child suggestion-div))))))))))
 
+(defun analytics-js ()
+  "add google analytics and microsoft clarity"
+  (with-html-output (*standard-output*)
+    (htm (:script :async t :src "https://www.googletagmanager.com/gtag/js?id=G-FRPZLDV6PZ")
+	 (:script "window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-FRPZLDV6PZ');"))))
+
 ;; PAGES
 (defroute index-page ("/" :method :get) ()
   (with-html-output-to-string (*standard-output*)
     (:html
      (:head
       (:meta :charset "utf-8")
+      (:link :rel "icon" :href "/static/icons/web/favicon.ico" :sizes "any")
+      (:link :rel "apple-touch-icon" :href "/static/icons/web/apple-touch-icon.png")
       (:meta :name "viewport" :content "width=device-width, initial-scale=1")
       (:title "Bbeyi")
-      (:style (str (index-css))))
+      (:style (str (index-css)))
+      (analytics-js))
      (:body
       (:header
        (:div :class "logo" (:a :href "/" "Bbeyi")))
@@ -165,23 +177,23 @@
 		  (let ((products (test-data)))
 		    (dolist (product products)
 		      (htm 
-			   (:div :class "product-card"
-				 (:img :class "product-image" :src (first product) :alt (str (second product)))
-				 (:div :class "product-info"
-				       (:h2 :class "product-title" (str (third product)))
-				       (:p :class "product-price" (str (fourth product)))
-				       (:p :class "product-site" (str (str:capitalize (fifth product)))))))))))
+		       (:div :class "product-card"
+			     (:img :class "product-image" :src (first product) :alt (str (second product)))
+			     (:div :class "product-info"
+				   (:h2 :class "product-title" (str (third product)))
+				   (:p :class "product-price" (str (fourth product)))
+				   (:p :class "product-site" (str (str:capitalize (fifth product)))))))))))
       ;; Footer outside the container
-        (:footer
-         ;; Links section
-         (:div :class "footer-links"
-          (:a :href "mailto:bbeyi@ninx.xyz" "Email Us") " | "
-          (:a :href "tel:+256785842699" "Call Us") " | "
-          (:a :href "/privacy" "Privacy"))
-         ;; Separator line
-         (:hr :class "footer-separator")
-         ;; Copyright line
-         (:p "© 2024 Bbeyi. All rights reserved."))
+      (:footer
+       ;; Links section
+       (:div :class "footer-links"
+             (:a :href "mailto:bbeyi@ninx.xyz" "Email Us") " | "
+             (:a :href "tel:+256785842699" "Call Us") " | "
+             (:a :href "/privacy" "Privacy"))
+       ;; Separator line
+       (:hr :class "footer-separator")
+       ;; Copyright line
+       (:p "© 2024 Bbeyi. All rights reserved."))
       ;; JavaScript (not included in this snippet)
       (:script (str (ws-js-code)))))))
 
@@ -284,9 +296,12 @@
       (:html
        (:head
         (:meta :charset "utf-8")
+	(:link :rel "icon" :href "/static/icons/web/favicon.ico" :sizes "any")
+        (:link :rel "apple-touch-icon" :href "/static/icons/web/apple-touch-icon.png")
         (:meta :name "viewport" :content "width=device-width, initial-scale=1")
         (:title (str (format nil "~a | Bbeyi" q)))
-        (:style (str (index-css))))
+        (:style (str (index-css)))
+	(analytics-js))
        (:body
         (:header
          (:div :class "logo" (:a :href "/" "Bbeyi")))
@@ -325,9 +340,9 @@
         (:footer
          ;; Links section
          (:div :class "footer-links"
-          (:a :href "mailto:bbeyi@ninx.xyz" "Email Us") " | "
-          (:a :href "tel:+256785842699" "Call Us") " | "
-          (:a :href "/privacy" "Privacy"))
+               (:a :href "mailto:bbeyi@ninx.xyz" "Email Us") " | "
+               (:a :href "tel:+256785842699" "Call Us") " | "
+               (:a :href "/privacy" "Privacy"))
          ;; Separator line
          (:hr :class "footer-separator")
          ;; Copyright line
