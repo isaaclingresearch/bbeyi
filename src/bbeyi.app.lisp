@@ -199,9 +199,13 @@
 
 (defun test-data ()
   "generates data for testing our application web pages"
-  (let* ((keys (subseq (redis:red-keys "{product}:*") 0 5))
+  (let* ((products (redis:red-keys "{product}:*"))
+	 (keys (if (> (length products) 5)
+		   (subseq products 0 5)
+		   products))
 	 (data (mapcar #'redis:red-hgetall keys)))
     (mapcar (lambda (d)
+	      ;; this is inefficient
 	      (list (get-value-by-key "image-url" d)
 		    (get-value-by-key "name" d)
 		    (get-value-by-key "name" d)
