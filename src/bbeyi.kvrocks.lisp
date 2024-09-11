@@ -59,19 +59,22 @@ it is important that the we use {index} to put all of them in the same slot to b
 
 all data os saved in {products} 
 fragment indexes are created from name and description and saved in {index} for full text search"
-  (let ((id (format nil "{product}:~a" (to-string (make-v7)))))
-    (redis:red-hset id "product-id" product-id)
-    (redis:red-hset id "name" name)
-    (redis:red-hset id "description" description)
-    (redis:red-hset id "price" price)
-    (redis:red-hset id "location" location)
-    (redis:red-hset id "site" site)
-    (redis:red-hset id "image-url" image-url)
-    (redis:red-hset id "url" url)
-    (redis:red-hset id "status" status)
-    (redis:red-hset id "condition" condition)
-    (create-index id name)
-    (format t "Saved Product: ~a ~%" name)))
+  (let ((id (format nil "{product}:~a" product-id)))
+    (if (redis:red-exists id)
+	(format t "Product: ~a already saved ~%" name)
+	(progn
+	  (redis:red-hset id "product-id" product-id)
+	  (redis:red-hset id "name" name)
+	  (redis:red-hset id "description" description)
+	  (redis:red-hset id "price" price)
+	  (redis:red-hset id "location" location)
+	  (redis:red-hset id "site" site)
+	  (redis:red-hset id "image-url" image-url)
+	  (redis:red-hset id "url" url)
+	  (redis:red-hset id "status" status)
+	  (redis:red-hset id "condition" condition)
+	  (create-index id name)
+	  (format t "Saved Product: ~a ~%" name)))))
 
 (defun create-index (id name)
   "start with an id and name

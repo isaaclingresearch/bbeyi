@@ -217,8 +217,10 @@ when the page is found, save all items from the page, then go to the next page, 
     (let* ((json-data (flexi-streams:octets-to-string response))
 	   (data (jzon:parse json-data)))
       (unless (string= "{\"result\":\"err\",\"message\":\"Not Found\"}" (str:trim json-data))
-	(loop for i across (hash-get data '("adverts_list" "adverts"))
-	      do (save-jiji-item i))
+	(handler-case (loop for i across (hash-get data '("adverts_list" "adverts"))
+			    do (save-jiji-item i))
+	  (error (err)
+	    (declare (ignore err))))
 	(jiji-crawl type :page (1+ page)))
       )))
 
@@ -351,7 +353,13 @@ when the page is found, save all items from the page, then go to the next page, 
 
 (defun spider ()
   "get all products"
+  (jiji-spider)
+  (jumia-spider))
+
+(defun jiji-spider ()
   (dolist (jiji *jiji-types*)
-    (jiji-crawl jiji))
+    (jiji-crawl jiji)))
+
+(defun jumia-spider ()
   (dolist (jumia *jumia-types*)
     (jumia-crawl jumia)))
